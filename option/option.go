@@ -102,7 +102,21 @@ func (o Option[T]) Value() (driver.Value, error) {
 	if o.IsNone() {
 		return nil, nil
 	}
-	return o.Expect("option was checked before"), nil
+	v := o.Expect("option was checked before")
+	var val any
+	switch tv := any(v).(type) {
+		case int:
+			val = int64(tv)
+		case int8:
+			val = int64(tv)
+		case int16:
+			val = int64(tv)
+		case int32:
+			val = int64(tv)
+		default:
+			val = tv
+	}
+	return val, nil
 }
 
 // Scan implements sql.Scanner interface for database reads
@@ -115,6 +129,25 @@ func (o *Option[T]) Scan(value interface{}) error {
 	switch v := value.(type) {
 	case T:
 		*o = Some(v)
+	case int64:
+		var tval T
+		switch any(tval).(type) {
+			case int:
+				intVal := any(int(v)).(T)
+				*o = Some(intVal)
+			case int8:
+				intVal := any(int8(v)).(T)
+				*o = Some(intVal)
+			case int16:
+				intVal := any(int16(v)).(T)
+				*o = Some(intVal)
+			case int32:
+				intVal := any(int32(v)).(T)
+				*o = Some(intVal)
+			default:
+				var e T
+				return fmt.Errorf("cannot scan %T into Option[%T]", value, e)
+		}
 	default:
 		var e T
 		return fmt.Errorf("cannot scan %T into Option[%T]", value, e)
