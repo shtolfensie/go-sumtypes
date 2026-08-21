@@ -1,3 +1,3 @@
-module stolfa.xyz/go-sumtypes
+module github.com/shtolfensie/go-sumtypes
 
 go 1.24
