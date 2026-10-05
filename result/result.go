@@ -1,7 +1,10 @@
 package result
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 )
 
@@ -52,7 +55,6 @@ func (r Result[T]) Eq(val T) bool {
 	return false
 }
 
-
 func Map[T any, U any](r Result[T], f func(val T) U) Result[U] {
 	if r.IsOk() {
 		return Result[U]{value: f(r.value)}
@@ -60,30 +62,58 @@ func Map[T any, U any](r Result[T], f func(val T) U) Result[U] {
 	return Result[U]{err: r.err}
 }
 
-func Err[T comparable](err error) Result[T] {
+func Err[T any](err error) Result[T] {
 	return Result[T]{err: err}
 }
 
-func Ok[T comparable](val T) Result[T] {
+func Ok[T any](val T) Result[T] {
 	return Result[T]{value: val}
 }
 
-type jsonPayload[T any] struct {
-	Value *T `json:"value,omitempty"`
-	Err error `json:"error,omitempty"`
-}
-
 func (r Result[T]) MarshalJSON() ([]byte, error) {
-	var p *jsonPayload[T]
 	if r.IsOk() {
-		p = &jsonPayload[T]{
-			Value: &r.value,
-		}
-	} else {
-		p = &jsonPayload[T]{
-			Err: r.err,
-		}
+		return json.Marshal(struct {
+			Value T `json:"value"`
+		}{Value: r.value})
 	}
 
-	return json.Marshal(p)
+	return json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: r.err.Error()})
+}
+
+func (r *Result[T]) UnmarshalJSON(data []byte) error {
+	if r == nil {
+		return fmt.Errorf("result: UnmarshalJSON on nil pointer")
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	valueJSON, hasValue := payload["value"]
+	errorJSON, hasError := payload["error"]
+	if hasValue == hasError {
+		return fmt.Errorf("result: JSON object must contain exactly one of value or error")
+	}
+
+	if hasValue {
+		var value T
+		if err := json.Unmarshal(valueJSON, &value); err != nil {
+			return err
+		}
+		*r = Ok(value)
+		return nil
+	}
+
+	var message string
+	if bytes.Equal(bytes.TrimSpace(errorJSON), []byte("null")) {
+		return fmt.Errorf("result: error must be a JSON string")
+	}
+	if err := json.Unmarshal(errorJSON, &message); err != nil {
+		return err
+	}
+	*r = Err[T](errors.New(message))
+	return nil
 }
